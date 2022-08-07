@@ -1,3 +1,9 @@
+use crate::{
+    error::StreamError,
+    instruction::StreamInstruction,
+    state::{CreateStreamInput, StreamData, WithdrawInput},
+};
+
 use std::str::FromStr;
 
 use crate::{
@@ -39,7 +45,44 @@ impl Processor {
         accounts: &[AccountInfo],
         data: CreateStreamInput,
     ) -> ProgramResult {
-        Ok(())
+        let admin_pub_key = match Pubkey::from_str("489RFKuM1fpZuczdHV3qsPoJ2K4Nm6hYHdSzGSWuRn2q") {
+            Ok(key) => key,
+            Err(_) => return Err(StreamError::PubKeyParseError.into()),
+        };
+
+        let account_info_iter = &mut accounts.iter();
+        let escrow_account = next_account_info(account_info_iter)?;
+        let sender_account = next_account_info(account_info_iter)?;
+        let receiver_account = next_account_info(account_info_iter)?;
+        let admin_account = next_account_info(account_info_iter)?;
+
+        if *admin_account.key != admin_pub_key {
+            return Err(StreamError::AdminAccountInvalid.into());
+        }
+         // 0.03 sol token admin account fee
+        // 30000000 Lamports = 0.03 sol
+        **escrow_account.try_borrow_mut_lamports()? -= 30000000;
+        **admin_account.try_borrow_mut_lamports()? += 30000000;
+
+        if data.end_time <= data.start_time || data.start_time < Clock::get()?.unix_timestamp {
+            return Err(StreamError::InvalidStartOrEndTime.into());
+        }
+
+        if data.amount_second * ((data.end_time - data.start_time) as u64)
+            != **escrow_account.lamports.borrow()
+                - Rent::get()?.minimum_balance(escrow_account.data_len())
+        {
+            return Err(StreamError::NotEnoughLamports.into());
+        }
+
+        if !sender_account.is_signer {
+            return Err(ProgramError::MissingRequiredSignature);
+        }
+
+        if *receiver_account.key != data.receiver {
+            return Err(ProgramError::InvalidAccountData);
+        }
+
     }
 
     fn process_withdraw(
