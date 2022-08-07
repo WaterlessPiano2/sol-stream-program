@@ -6,10 +6,6 @@ use crate::{
 
 use std::str::FromStr;
 
-use crate::{
-    instruction::StreamInstruction,
-    state::{CreateStreamInput, StreamData, WithdrawInput},
-};
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
