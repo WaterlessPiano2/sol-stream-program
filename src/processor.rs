@@ -83,6 +83,11 @@ impl Processor {
             return Err(ProgramError::InvalidAccountData);
         }
 
+        let escrow_data = StreamData::new(data, *sender_account.key);
+
+        escrow_data.serialize(&mut &mut escrow_account.data.borrow_mut()[..])?;
+        Ok(())
+    
     }
 
     fn process_withdraw(
