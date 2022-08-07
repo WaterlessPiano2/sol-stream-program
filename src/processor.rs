@@ -90,11 +90,41 @@ impl Processor {
     
     }
 
-    fn process_withdraw(
+ fn process_withdraw(
         _program_id: &Pubkey,
         accounts: &[AccountInfo],
         data: WithdrawInput,
     ) -> ProgramResult {
+        let account_info_iter = &mut accounts.iter();
+        let escrow_account = next_account_info(account_info_iter)?;
+        let receiver_account = next_account_info(account_info_iter)?;
+
+        let mut escrow_data = StreamData::try_from_slice(&escrow_account.data.borrow())
+            .expect("failed to serialize escrow data");
+
+        if *receiver_account.key != escrow_data.receiver {
+            return Err(ProgramError::IllegalOwner);
+        }
+
+        if !receiver_account.is_signer {
+            return Err(ProgramError::MissingRequiredSignature);
+        }
+
+        let time = Clock::get()?.unix_timestamp;
+
+        let total_token_owned = escrow_data.amount_second
+            * ((std::cmp::min(time, escrow_data.end_time) - escrow_data.start_time) as u64)
+            - escrow_data.lamports_withdrawn;
+
+        if data.amount > total_token_owned {
+            return Err(StreamError::WithdrawError.into());
+        }
+        
+        **escrow_account.try_borrow_mut_lamports()? -= data.amount;
+        **receiver_account.try_borrow_mut_lamports()? += data.amount;
+        escrow_data.lamports_withdrawn += data.amount;
+
+        escrow_data.serialize(&mut &mut escrow_account.data.borrow_mut()[..])?;
         Ok(())
     }
 
